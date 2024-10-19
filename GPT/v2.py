@@ -4,7 +4,7 @@
 
 """
 A Bigram Language Model which attempts to produce Shakespeare like stuff
-This is the one beofre self-attention
+After self-attention
 """
 
 import torch
@@ -19,6 +19,7 @@ eval_intervals = 300
 learning_rate = 1e-2
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
+n_embd = 32
 
 
 torch.manual_seed(1337)
@@ -95,10 +96,12 @@ class BigramLanguageModel(nn.Module):
 	A class for BLM which is a child of nn.Module
 	It has functions to forward and generate
 	"""
-	def __init__(self, vocab_size):
+	def __init__(self):
 		super().__init__()
 		# each token directly reads off the logits for the next token in the lookup table
-		self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
+		self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
+		self.position_embedding_table = nn.Embedding(block_size, n_embd)
+		self.lm_head = nn.Linear(n_embd, vocab_size)
 
 	def forward(self, idx, targets=None):
 		"""_summary_
@@ -111,7 +114,13 @@ class BigramLanguageModel(nn.Module):
 		Returns:
 			torch.tensor[int]: the logits and loss
 		"""
-		logits = self.token_embedding_table(idx)	# (B, T, C)
+		B, T = idx.shape
+
+		tok_emb = self.token_embedding_table(idx)    # (B, T, C)
+		pos_emb = self.position_embedding_table(torch.arange(T, device=device))    # (T, C)
+		x = tok_emb + pos_emb    # (B, T, C)
+		logits = self.lm_head(x)
+
 
 		if targets is None:
 			loss = None
@@ -148,7 +157,7 @@ class BigramLanguageModel(nn.Module):
 			idx = torch.cat((idx, idx_next), dim=1)	# (B, T+1)
 		return idx
 
-model = BigramLanguageModel(vocab_size)
+model = BigramLanguageModel()
 m = model.to(device)
 
 # create a PyTorch optimizer
