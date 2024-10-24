@@ -1,3 +1,5 @@
+# pylint: disable=bad-indentation
+
 import random
 from Value import Value
 
@@ -75,7 +77,7 @@ def main():
 
 	print('Before Tweaking')
 	ypred = [n(x) for x in xs]		# The prediction of our model
-	loss = sum([(yout-ygt)**2 for ygt, yout in zip(ys, ypred)])		# How wrong our model is
+	loss = sum((yout-ygt)**2 for ygt, yout in zip(ys, ypred))		# How wrong our model is
 	print(loss)
 
 	data = [xs, ys, n]
@@ -85,7 +87,7 @@ def main():
 	n = data[2]
 
 	ypred = [n(x) for x in xs]		# The prediction of our model
-	loss = sum([(yout-ygt)**2 for ygt, yout in zip(ys, ypred)])		# How wrong our model is
+	loss = sum((yout-ygt)**2 for ygt, yout in zip(ys, ypred))		# How wrong our model is
 	print(loss)
 	print(ypred)
 

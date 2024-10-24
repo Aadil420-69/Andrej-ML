@@ -12,18 +12,31 @@ from torch import nn
 import torch.nn.functional as F
 
 # hyperparameters
-batch_size = 64	# how many independent processes will we process in parallel
-block_size = 256	# whar is the maximum context length for prediction
+batch_size = 32	# how many independent processes will we process in parallel
+block_size = 8	# whar is the maximum context length for prediction
 max_iters = 5000
 eval_intervals = 500
-learning_rate = 3e-4
+learning_rate = 1e-3
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
-n_embd = 384
-n_head = 6
+n_embd = 32
+n_head = 4
 n_layer = 6
 dropout = 0.2
-i = 0
+
+
+# # hyperparameters
+# batch_size = 64	# how many independent processes will we process in parallel
+# block_size = 256	# whar is the maximum context length for prediction
+# max_iters = 5000
+# eval_intervals = 500
+# learning_rate = 3e-4
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# eval_iters = 200
+# n_embd = 384
+# n_head = 6
+# n_layer = 6
+# dropout = 0.2
 
 
 torch.manual_seed(1337)
@@ -61,16 +74,9 @@ def get_batch(split):
 	Returns:
 		torch.tensor[[int]]: the x and y component of the batch
 	"""
-	global i
-	i += 1
-
 	data = train_data if split == "train" else val_data
-	ix = torch.randint(len(data) - batch_size, (batch_size, ))
+	ix = torch.randint(len(data) - block_size, (batch_size, ))
 
-	print(i, 'data:', data)
-	print()
-	# for i in ix:
-	# 	print(data[i:i+block_size].shape)
 	x = torch.stack([data[i:i+block_size] for i in ix])
 	y = torch.stack([data[i+1:i+block_size+1] for i in ix])
 
@@ -140,6 +146,40 @@ class Head(nn.Module):
 		return out
 
 
+class Head_new(nn.Module):
+	def __init__(self, n_head, head_size):
+		super().__init__()
+		self.key = nn.Linear(n_embd, head_size*n_head, bias=False)
+		self.query = nn.Linear(n_embd, head_size*n_head, bias=False)
+		self.value = nn.Linear(n_embd, head_size*n_head, bias=False)
+		self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size))))
+		self.n_head = n_head
+
+		self.attn_dropout = nn.Dropout(dropout)
+		self.proj = nn.Linear(n_embd, n_embd)
+		self.resid_dropout = nn.Dropout(dropout)
+
+	
+	def forward(self, x: torch.Tensor):
+		B, T, C = x.shape
+		k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)    # (B, nh, T, hs)
+		q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)    # (B, nh, T, hs)
+		v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)    # (B, nh, T, hs)
+
+		# compute attention scores ("affinities")
+		wei: torch.Tensor = q @ k.transpose(-2, -1) * k.shape[-1]**-0.5    # (B, nh, T, hs) @ (B, nh, T, hs) --> (B, nh, T, T)
+		wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))    # (B, nh, T, T)
+		wei = F.softmax(wei, dim=-1)    # (B, nh, T, T)
+		wei = self.attn_dropout(wei)    # (B, nh, T, T)
+
+		# perform the weighted aggregation of the values
+		out: torch.tensor = wei @ v    # (B, nh, T, T) @ (B, nh, T, hs) --> (B, nh, T, hs)
+		out = out.transpose(1, 2).contiguous().view(B, T, C)    # (B, T, C)
+		out = self.resid_dropout(self.proj(out))
+
+		return out
+
+
 class MultiHeadAttention(nn.Module):
 	def __init__(self, num_heads, head_size):
 		super().__init__()
@@ -192,7 +232,7 @@ class Block(nn.Module):
 	def __init__(self, n_embd, n_head):
 		super().__init__()
 		head_size = n_embd // n_head
-		self.sa = MultiHeadAttention(n_head, head_size)
+		self.sa = Head_new(n_head, head_size)
 		self.ffwd = FeedForward(n_embd)
 		self.ln1 = nn.LayerNorm(n_embd)
 		self.ln2 = nn.LayerNorm(n_embd)
@@ -288,7 +328,6 @@ m = model.to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
 for iterr in range(max_iters):
-	print('YEET')
 	# every once in a while calculate the loss on train and eval sets
 	if iterr % eval_intervals == 0:
 		losses = estimate_loss()
@@ -302,7 +341,6 @@ for iterr in range(max_iters):
 	optimizer.zero_grad(set_to_none=True)
 	loss.backward()
 	optimizer.step()
-	break
 
 losses = estimate_loss()
 print(f"step {max_iters-1}: train loss {losses['train']:.4f}, eval loss {losses['eval']:.4f}")
