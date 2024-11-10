@@ -29,19 +29,19 @@ n_layer = 6
 dropout = 0.2
 
 # user vars
-new_model = input('Do you want to train the existing model (default 0)?')
-if new_model is None: new_model = 0
+new_model = input('Do you want to train an existing model (default 1)? ')
+if new_model == '': new_model = 1
 
 if not new_model:
 	get_loc = input('Where is the current model (Default "Practice/GPT/model.pth.tar")? ')
-	if get_loc is None: get_loc = 'Practice/GPT/model.pth.tar'
+	if get_loc == '': get_loc = 'Practice/GPT/model.pth.tar'
 
 save_model = input('Do you want to save the trained model (default 1)?')
-if save_model is None: save_model = 1
+if save_model == '': save_model = 1
 
 if save_model:
 	save_loc = input('Where do you want to save it (Default "Practice/GPT/model.pth.tar")? ')
-	if save_loc is None: save_loc = 'Practice/GPT/model.pth.tar'
+	if save_loc == '': save_loc = 'Practice/GPT/model.pth.tar'
 
 
 with open('input.txt', 'r', encoding="utf-8") as f:
@@ -63,12 +63,12 @@ decode = lambda l: ''.join(itos[i] for i in l)	# decoder: takes a list of intege
 data = DataClass(encode(text))
 config = GPTConfig(data, vocab_size, batch_size, block_size,
 				   max_iters, eval_intervals, learning_rate,
-				   eval_intervals, n_embd, n_head,
+				   eval_iters, n_embd, n_head,
 				   n_layer, dropout, False)
 
 # cerate the Model
 model = GPT(config)
-m = model.to(device)
+model = model.to(device)
 
 # create a PyTorch optimizer
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
@@ -126,7 +126,7 @@ if save_model:
 	module.save_model(state, save_loc)
 
 # generate from the model
-context = torch.zeros((1, 1), dtype=torch.long, device=device)
-print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
+context = torch.zeros((1, 1), dtype=torch.long, device=config.device)
+print(decode(model.generate(context, max_new_tokens=500)[0].tolist()))
 
 module.end_log()

@@ -18,7 +18,7 @@ torch.manual_seed(1337)
 # hyperparameters
 batch_size = 16    # how many independent processes will we process in parallel
 block_size = 256    # whar is the maximum context length for prediction
-max_iters = 5000
+max_iters = 20_000
 eval_intervals = 500
 learning_rate = 3e-4
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -31,18 +31,18 @@ dropout = 0.2
 # user vars
 if input('non-default values? '):
 	new_model = input('Do you want to train an existing model (default 1)? ')
-	if new_model is None: new_model = 1
+	if new_model == '': new_model = 1
 
 	if not new_model:
 		get_loc = input('Where is the current model (Default "Practice/GPT/model.pth.tar")? ')
-		if get_loc is None: get_loc = 'Practice/GPT/model.pth.tar'
+		if get_loc == '': get_loc = 'Practice/GPT/model.pth.tar'
 
 	save_model = input('Do you want to save the trained model (default 1)?')
-	if save_model is None: save_model = 1
+	if save_model == '': save_model = 1
 
 	if save_model:
 		save_loc = input('Where do you want to save it (Default "Practice/GPT/model.pth.tar")? ')
-		if save_loc is None: save_loc = 'Practice/GPT/model.pth.tar'
+		if save_loc == '': save_loc = 'Practice/GPT/model.pth.tar'
 else:
 	new_model = 0
 	save_model = 1
@@ -68,50 +68,55 @@ decode = lambda l: ''.join(itos[i] for i in l)	    # decoder: takes a list of in
 data = DataClass(encode(text))
 config = GPTConfig(data, vocab_size, batch_size, block_size,
 				   max_iters, eval_intervals, learning_rate,
-				   eval_intervals, n_embd, n_head,
+				   eval_iters, n_embd, n_head,
 				   n_layer, dropout, False)
 
 # cerate the Model
 model = GPT(config)
-m = model.to(device)
+model = model.to(device)
 
-# create a PyTorch optimizer
+# create a PyTorch optimizer and define epoch
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-
 epoch = 0
 
 # get existing stuff
 if not new_model:
 	state = module.load_model(get_loc)
 	model.load_state_dict(state['model'])
-	optimizer.load_state_dict(state['model'])
+	optimizer.load_state_dict(state['optimizer'])
 	epoch = state['epoch']
 	config = state['config']
 
 
-# iterr = 350
-
+eval_bool = False
+b = False
+module.log(epoch)
 for iterr in range(max_iters):
 	with open('Practice/GPT/exit.txt', 'r') as f:
 		if f.read():
 			module.log('ending training', out=True)
-			break
+			epoch -= 1
+			b = True
+	if b: break
 
 	module.log(f'iteration {iterr}', out=True)
 	# every once in a while calculate the loss on train and eval sets
 	if iterr % eval_intervals == 0:
-		losses = estimate_loss(model, config)
-		module.log(f"step {iterr}: train loss {losses['train']:.4f}, eval loss {losses['eval']:.4f}", out=True)
+		if not eval_bool:
+			eval_bool = True
+		else:
+			losses = estimate_loss(model, config)
+			module.log(f"step {iterr}: train loss {losses['train']:.4f}, eval loss {losses['eval']:.4f}", out=True)
 
-		# saves the model
-		if save_model:
-			state = {
-				'model': model.state_dict(),
-				'optimizer': optimizer.state_dict(),
-				'epoch': epoch+iterr,
-				'config': config
-			}
-			module.save_model(state, save_loc)    # saves the model
+			# saves the model
+			if save_model:
+				state = {
+					'model': model.state_dict(),
+					'optimizer': optimizer.state_dict(),
+					'epoch': epoch+iterr,
+					'config': config
+				}
+				module.save_model(state, save_loc)    # saves the model
 
 	# Sample a batch data
 	xb, yb = get_batch('train', config)
@@ -135,9 +140,5 @@ if save_model:
 		'config': config
 	}
 	module.save_model(state, save_loc)
-
-# generate from the model
-context = torch.zeros((1, 1), dtype=torch.long, device=device)
-print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
 
 module.end_log()

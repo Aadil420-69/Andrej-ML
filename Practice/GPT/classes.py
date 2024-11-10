@@ -21,7 +21,7 @@ def get_batch(split: str, config: 'GPTConfig', iterr: int = -10):
 	ix = torch.randint(len(data) - config.block_size, (config.batch_size, ))
 
 	f = open('Practice/GPT/Logs/log.txt', 'w')
-	if iterr >= 0: f.write('Evaluation loop number ' + iterr)
+	if iterr >= 0: f.write('Evaluation loop number ' + str(iterr) + '\n')
 		# print(iterr)
 	f.write(str(module.time()) + '\n')
 	f.write(str(module.time_since()) + 'secs\n')
@@ -68,9 +68,6 @@ class MultiHeadAttention(nn.Module):
 		super().__init__()
 		self.config = config
 
-		# self.key = nn.Linear(config.n_embd, config.n_embd, bias=False)
-		# self.query = nn.Linear(config.n_embd, config.n_embd, bias=False)
-		# self.value = nn.Linear(config.n_embd, config.n_embd, bias=False)
 		self.attn = nn.Linear(config.n_embd, config.n_embd*3, bias=config.bias)
 
 		self.register_buffer('tril', torch.tril(torch.ones((config.block_size, config.block_size))))
@@ -84,23 +81,23 @@ class MultiHeadAttention(nn.Module):
 		B, T, C = x.shape
 		config = self.config
 
-		# k = self.key(x).view(B, T, config.n_head, C // config.n_head).transpose(1, 2)    # (B, nh, T, hs)
-		# q = self.query(x).view(B, T, config.n_head, C // config.n_head).transpose(1, 2)    # (B, nh, T, hs)
-		# v = self.value(x).view(B, T, config.n_head, C // config.n_head).transpose(1, 2)    # (B, nh, T, hs)
+		# k = self.key(x).view(B, T, config.n_head, C // config.n_head).transpose(1, 2)	# (B, nh, T, hs)
+		# q = self.query(x).view(B, T, config.n_head, C // config.n_head).transpose(1, 2)	# (B, nh, T, hs)
+		# v = self.value(x).view(B, T, config.n_head, C // config.n_head).transpose(1, 2)	# (B, nh, T, hs)
 		k, q, v = self.attn(x).split(config.n_embd, dim=2)
-		k = k.view(B, T, config.n_head, C // config.n_head).transpose(1, 2)    # (B, nh, T, hs)
-		q = q.view(B, T, config.n_head, C // config.n_head).transpose(1, 2)    # (B, nh, T, hs)
-		v = v.view(B, T, config.n_head, C // config.n_head).transpose(1, 2)    # (B, nh, T, hs)
+		k = k.view(B, T, config.n_head, C // config.n_head).transpose(1, 2)	# (B, nh, T, hs)
+		q = q.view(B, T, config.n_head, C // config.n_head).transpose(1, 2)	# (B, nh, T, hs)
+		v = v.view(B, T, config.n_head, C // config.n_head).transpose(1, 2)	# (B, nh, T, hs)
 
 		# compute attention scores ("affinities")
-		wei: torch.Tensor = q @ k.transpose(-2, -1) * k.shape[-1]**-0.5    # (B, nh, T, hs) @ (B, nh, T, hs) --> (B, nh, T, T)
-		wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))    # (B, nh, T, T)
-		wei = F.softmax(wei, dim=-1)    # (B, nh, T, T)
-		wei = self.attn_dropout(wei)    # (B, nh, T, T)
+		wei: torch.Tensor = q @ k.transpose(-2, -1) * k.shape[-1]**-0.5	# (B, nh, T, hs) @ (B, nh, T, hs) --> (B, nh, T, T)
+		wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))	# (B, nh, T, T)
+		wei = F.softmax(wei, dim=-1)	# (B, nh, T, T)
+		wei = self.attn_dropout(wei)	# (B, nh, T, T)
 
 		# perform the weighted aggregation of the values
-		out: torch.tensor = wei @ v    # (B, nh, T, T) @ (B, nh, T, hs) --> (B, nh, T, hs)
-		out = out.transpose(1, 2).contiguous().view(B, T, C)    # (B, T, C)
+		out: torch.tensor = wei @ v	# (B, nh, T, T) @ (B, nh, T, hs) --> (B, nh, T, hs)
+		out = out.transpose(1, 2).contiguous().view(B, T, C)	# (B, T, C)
 		out = self.resid_dropout(self.proj(out))
 
 		return out
@@ -116,7 +113,7 @@ class FeedForward(nn.Module):
 		self.net = nn.Sequential(
 			nn.Linear(config.n_embd, 4 * config.n_embd),
 			nn.ReLU(),
-			nn.Linear(4 * config.n_embd, config.n_embd),    # projection
+			nn.Linear(4 * config.n_embd, config.n_embd),	# projection
 			nn.Dropout(config.dropout),
 		)
 
@@ -162,16 +159,17 @@ class GPT(nn.Module):
 	A class for BLM which is a child of nn.Module
 	It has functions to forward and generate
 	"""
-	def __init__(self, config: 'GPTConfig'):
+	def __init__(self, config: 'GPTConfig' = None):
 		super().__init__()
-		self.config = config
+		if config:
+			self.config = config
 
-		# each token directly reads off the logits for the next token in the lookup table
-		self.token_embedding_table = nn.Embedding(config.vocab_size, config.n_embd)
-		self.position_embedding_table = nn.Embedding(config.block_size, config.n_embd)
-		self.blocks = nn.Sequential(*[Block(config) for _ in range(config.n_layer)])
-		self.ln_f = nn.LayerNorm(config.n_embd)    # final layer norm
-		self.lm_head = nn.Linear(config.n_embd, config.vocab_size)
+			# each token directly reads off the logits for the next token in the lookup table
+			self.token_embedding_table = nn.Embedding(config.vocab_size, config.n_embd)
+			self.position_embedding_table = nn.Embedding(config.block_size, config.n_embd)
+			self.blocks = nn.Sequential(*[Block(config) for _ in range(config.n_layer)])
+			self.ln_f = nn.LayerNorm(config.n_embd)	# final layer norm
+			self.lm_head = nn.Linear(config.n_embd, config.vocab_size)
 
 	def forward(self, idx, targets=None):
 		"""_summary_
@@ -187,13 +185,12 @@ class GPT(nn.Module):
 		B, T = idx.shape
 		config = self.config
 
-
-		tok_emb = self.token_embedding_table(idx)    # (B, T, C)
-		pos_emb = self.position_embedding_table(torch.arange(T, device=config.device))    # (T, C)
-		x = tok_emb + pos_emb    # (B, T, C)
-		x = self.blocks(x)     # (B, T, C)
-		x = self.ln_f(x)     # (B, T, C)
-		logits = self.lm_head(x)    # (B, T, vocab_size)
+		tok_emb = self.token_embedding_table(idx)	# (B, T, C)
+		pos_emb = self.position_embedding_table(torch.arange(T, device=config.device))	# (T, C)
+		x = tok_emb + pos_emb	# (B, T, C)
+		x = self.blocks(x)	 # (B, T, C)
+		x = self.ln_f(x)	 # (B, T, C)
+		logits = self.lm_head(x)	# (B, T, vocab_size)
 
 		if targets is None:
 			loss = None
@@ -234,6 +231,18 @@ class GPT(nn.Module):
 			idx = torch.cat((idx, idx_next), dim=1)	# (B, T+1)
 		return idx
 
+	def numel(self, only_trainable: bool = True):
+		"""
+		Returns the total number of parameters (only counting
+		shared parameters once); if `only_trainable` is True, then only
+		includes parameters with `requires_grad = True`
+		"""
+		parameters = list(self.parameters())
+		if only_trainable:
+			parameters = [p for p in parameters if p.requires_grad]
+		unique = {p.data_ptr(): p for p in parameters}.values()
+		return sum(p.numel() for p in unique)
+
 
 # hyperparameters
 class GPTConfig:
@@ -266,3 +275,16 @@ class DataClass:
 		n = int(split * len(data))
 		self.train_data = data[:n]
 		self.val_data = data[n:]
+
+# # default parameters
+# batch_size = 16	# how many independent processes will we process in parallel
+# block_size = 256	# whar is the maximum context length for prediction
+# max_iters = 20_000
+# eval_intervals = 500
+# learning_rate = 3e-4
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# eval_iters = 50
+# n_embd = 384
+# n_head = 6
+# n_layer = 6
+# dropout = 0.2
