@@ -1,8 +1,8 @@
 # Custom
 test/
-log.out
-log.txt
-model.pth.tar
+*.out
+*.pth.tar
+*.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
